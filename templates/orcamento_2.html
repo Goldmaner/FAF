@@ -666,7 +666,12 @@
 
     // --- NAVEGAÇÃO COM ENTER ---
     document.addEventListener('keydown', function(e){
-      if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('valor')){
+      // Verificar se o Enter foi pressionado em um input de valor, categoria ou quantidade
+      const isValor = e.target.classList && e.target.classList.contains('valor');
+      const isCategoria = e.target.classList && e.target.classList.contains('categoria');
+      const isQuantidade = e.target.classList && e.target.classList.contains('quantidade');
+      
+      if (e.key === 'Enter' && (isValor || isCategoria || isQuantidade)){
         e.preventDefault();
         const currentTr = e.target.closest('tr');
         const currentTd = e.target.closest('td');
@@ -678,7 +683,16 @@
         if (nextTr && nextTr.tagName === 'TR'){
           const nextTds = nextTr.querySelectorAll('td');
           if (nextTds[tdIndex]){
-            const nextInput = nextTds[tdIndex].querySelector('input.valor');
+            // Procurar o input correspondente na próxima linha (valor, categoria ou quantidade)
+            let nextInput = null;
+            if (isValor) {
+              nextInput = nextTds[tdIndex].querySelector('input.valor');
+            } else if (isCategoria) {
+              nextInput = nextTds[tdIndex].querySelector('input.categoria');
+            } else if (isQuantidade) {
+              nextInput = nextTds[tdIndex].querySelector('input.quantidade');
+            }
+            
             if (nextInput) {
               nextInput.focus();
               nextInput.select();
