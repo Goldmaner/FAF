@@ -11,7 +11,6 @@ venv/
 # Environment variables (credentials)
 .env
 .env_teste
-.env.*
 
 # SQLite DB e arquivos de journal
 meu_banco.db

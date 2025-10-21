@@ -1,9 +1,10 @@
 """
 Blueprint de orçamento (listagem e edição)
+Inclui auditoria automática via triggers para parcerias_despesas
 """
 
 from flask import Blueprint, render_template, request, Response, jsonify
-from db import get_cursor
+from db import get_cursor, set_audit_user, get_current_user_id
 from utils import login_required
 import csv
 from io import StringIO
@@ -154,14 +155,17 @@ def editar(numero_termo):
     """
     cur = get_cursor()
     
-    # Buscar total_previsto para exibir no subtítulo
-    cur.execute("SELECT total_previsto FROM Parcerias WHERE numero_termo = %s", (numero_termo,))
+    # Buscar total_previsto e sei_celeb para exibir no subtítulo
+    cur.execute("SELECT total_previsto, sei_celeb FROM Parcerias WHERE numero_termo = %s", (numero_termo,))
     row = cur.fetchone()
     
     try:
         total_previsto_val = float(row['total_previsto']) if row and row['total_previsto'] is not None else 0.0
     except Exception:
         total_previsto_val = 0.0
+    
+    # Obter SEI de celebração
+    sei_celeb = row['sei_celeb'] if row and row.get('sei_celeb') else 'Não informado'
     
     # formatar em pt-BR: R$ 1.234.567,89
     formatted_total = 'R$ ' + f"{total_previsto_val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -186,6 +190,7 @@ def editar(numero_termo):
                          numero_termo=numero_termo, 
                          total_previsto=formatted_total, 
                          total_previsto_val=total_previsto_val,
+                         sei_celeb=sei_celeb,
                          aditivos=aditivos)
 
 
@@ -274,6 +279,10 @@ def atualizar_categoria():
         
         if not categoria_nova or categoria_nova.strip() == '':
             return jsonify({"error": "Categoria nova não pode estar vazia"}), 400
+        
+        # Configurar usuário para auditoria
+        usuario_id = get_current_user_id()
+        set_audit_user(usuario_id)
         
         # Atualizar todas as ocorrências da categoria antiga para a nova em ambos os bancos
         query = """

@@ -1,9 +1,10 @@
 """
 Módulo de gerenciamento de conexão com o banco de dados PostgreSQL
 Suporta conexões duais: local e Railway (para redundância)
+Inclui suporte para auditoria automática via triggers
 """
 
-from flask import g
+from flask import g, session
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from config import DB_CONFIG, DB_CONFIG_LOCAL, DB_CONFIG_RAILWAY
@@ -125,6 +126,44 @@ def execute_dual(query, params=None):
                 pass
     
     return success_local or success_railway
+
+
+def set_audit_user(usuario_id):
+    """
+    Configura o usuario_id na sessão do PostgreSQL para auditoria automática.
+    Deve ser chamado antes de operações que modificam parcerias_despesas.
+    
+    Args:
+        usuario_id: ID do usuário logado (ou None para usar ID 1 = sistema)
+    """
+    if usuario_id is None:
+        usuario_id = 1  # ID padrão do sistema
+    
+    set_sql = f"SET LOCAL app.current_user_id = '{usuario_id}'"
+    
+    # Configurar no banco LOCAL
+    cur_local = get_cursor_local()
+    if cur_local:
+        try:
+            cur_local.execute(set_sql)
+        except Exception as e:
+            print(f"[AVISO] Falha ao configurar audit user no LOCAL: {e}")
+    
+    # Configurar no banco RAILWAY
+    cur_railway = get_cursor_railway()
+    if cur_railway:
+        try:
+            cur_railway.execute(set_sql)
+        except Exception as e:
+            print(f"[AVISO] Falha ao configurar audit user no RAILWAY: {e}")
+
+
+def get_current_user_id():
+    """
+    Obtém o ID do usuário logado da sessão Flask.
+    Retorna None se não houver usuário logado.
+    """
+    return session.get('usuario_id')
 
 
 def close_db(e=None):

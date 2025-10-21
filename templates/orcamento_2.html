@@ -33,7 +33,12 @@
 <body class="p-4">
   <div class="container">
     <h2 id="pageTitle">Preenchimento do Orçamento Anual ou Proposta Orçamentária</h2>
-    <h5 id="termoSub" class="text-muted">{{ numero_termo }} &nbsp; <small class="text-muted">Previsto: {{ total_previsto if total_previsto is defined else 'R$ 0,00' }}</small></h5>
+    <h5 id="termoSub" class="text-muted">
+      {{ numero_termo }} &nbsp; 
+      <small class="text-muted">Previsto: {{ total_previsto if total_previsto is defined else 'R$ 0,00' }}</small>
+      &nbsp;|&nbsp;
+      <small class="text-info">SEI Celebração: {{ sei_celeb if sei_celeb is defined else 'Não informado' }}</small>
+    </h5>
     
     <!-- Dropdown Aditivo -->
     <div class="mt-2 mb-3">
@@ -132,11 +137,23 @@
         <!-- Será preenchido via JavaScript -->
       </datalist>
 
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 align-items-center">
         <button id="addLinha" class="btn btn-secondary btn-sm">Adicionar Linha</button>
         <button id="limparBtn" class="btn btn-warning btn-sm">🗑️ Limpar Tudo</button>
+        
+        <!-- Barra de progresso (oculta inicialmente) -->
+        <div id="progressContainer" class="d-none ms-auto me-2" style="width: 200px;">
+          <div class="progress" style="height: 25px;">
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                 role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+              <span id="progressText">0%</span>
+            </div>
+          </div>
+        </div>
+        
         <button id="salvarOrc2" class="btn btn-primary ms-auto">
-          <span id="salvarText">💾 Salvar</span>
+          <span id="salvarIcon">💾</span>
+          <span id="salvarText">Salvar</span>
           <span id="salvarSpinner" class="spinner-border spinner-border-sm d-none" role="status">
             <span class="visually-hidden">Salvando...</span>
           </span>
@@ -196,11 +213,28 @@
     document.getElementById('addMonthsBtn').addEventListener('click', function(){
       const n = parseInt(document.getElementById('numCols').value,10) || 0; if (n<=0) return;
       const thead = document.querySelector('#tabelaOrc2 thead tr'); const currentMonths = thead.querySelectorAll('.month-th').length;
-      for (let k=0;k<n;k++){ const idx = currentMonths + k + 1; const th = makeMonthHeader('Mês ' + idx); thead.insertBefore(th, thead.lastElementChild); }
-  // inserir inputs em cada linha
-  document.querySelectorAll('#bodyOrc2 tr').forEach(tr => { for (let k=0;k<n;k++){ const td = document.createElement('td'); td.className = 'month-td'; td.innerHTML = `<input type="text" class="form-control form-control-sm valor" placeholder="0,00">`; tr.insertBefore(td, tr.lastElementChild); }});
-      // adicionar tfoot colunas
-      const tfootRow = document.querySelector('#tabelaOrc2 tfoot tr'); for (let k=0;k<n;k++){ const td = document.createElement('td'); td.className='col-total'; td.textContent='0,00'; tfootRow.insertBefore(td, tfootRow.lastElementChild); }
+      // Inserir no thead: antes da coluna "Total" (penúltima)
+      const theadTotalCol = thead.children[thead.children.length - 2]; // penúltima coluna
+      for (let k=0;k<n;k++){ const idx = currentMonths + k + 1; const th = makeMonthHeader('Mês ' + idx); thead.insertBefore(th, theadTotalCol); }
+  // inserir inputs em cada linha do tbody: antes da coluna Total (penúltima)
+  document.querySelectorAll('#bodyOrc2 tr').forEach(tr => { 
+    const totalCol = tr.children[tr.children.length - 2]; // penúltima = Total
+    for (let k=0;k<n;k++){ 
+      const td = document.createElement('td'); 
+      td.className = 'month-td'; 
+      td.innerHTML = `<input type="text" class="form-control form-control-sm valor" placeholder="0,00">`; 
+      tr.insertBefore(td, totalCol); 
+    }
+  });
+      // adicionar tfoot colunas: antes da coluna de Grand Total (penúltima)
+      const tfootRow = document.querySelector('#tabelaOrc2 tfoot tr'); 
+      const tfootTotalCol = tfootRow.children[tfootRow.children.length - 1]; // última = Grand Total
+      for (let k=0;k<n;k++){ 
+        const td = document.createElement('td'); 
+        td.className='col-total month-td'; 
+        td.textContent='0,00'; 
+        tfootRow.insertBefore(td, tfootTotalCol); 
+      }
     });
 
     // ligar os botões de remoção já existentes no HTML inicial
@@ -401,6 +435,7 @@
         <td><input type="text" class="form-control form-control-sm quantidade" value="1"></td>
         <td><input type="text" class="form-control form-control-sm categoria" placeholder="Ex: Gerente de Serviço I" list="categoriasDisponiveis"></td>`;
   for (let i=0;i<monthCount;i++) cols += `<td class="month-td"><input type="text" class="form-control form-control-sm valor" placeholder="0,00"></td>`;
+      cols += `<td class="col-total-linha text-end total-linha">0,00</td>`;
       cols += `<td><button type="button" class="btn btn-danger btn-sm remover">Remover</button></td>`;
       tr.innerHTML = cols; tbody.appendChild(tr); recalcTotals();
     });
@@ -414,6 +449,9 @@
       const monthNames = Array.from(document.querySelectorAll('.month-name')).map(n => n.value || 'Mês');
       const rows = document.querySelectorAll('#bodyOrc2 tr');
       const despesas = [];
+      
+      console.log('[SALVAR] Iniciando coleta de dados...');
+      
       rows.forEach((tr) => {
         const selectRub = tr.querySelector('select[name="rubrica"]');
         const rubrica = selectRub ? selectRub.value : '';
@@ -440,36 +478,161 @@
         });
         if (Object.keys(valores_por_mes).length > 0) despesas.push({rubrica, quantidade, categoria_despesa: categoria, valores_por_mes});
       });
+      
       if (despesas.length === 0) { alert('Preencha pelo menos uma despesa com valores'); return; }
+
+      console.log('[SALVAR] Total de despesas:', despesas.length);
+
+      // Mostrar progresso
+      const btn = document.getElementById('salvarOrc2');
+      const btnText = document.getElementById('salvarText');
+      const btnIcon = document.getElementById('salvarIcon');
+      const btnSpinner = document.getElementById('salvarSpinner');
+      const progressContainer = document.getElementById('progressContainer');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      
+      // Desabilitar botão e mostrar spinner
+      btn.disabled = true;
+      btnIcon.classList.add('d-none');
+      btnText.textContent = 'Salvando...';
+      btnSpinner.classList.remove('d-none');
+      progressContainer.classList.remove('d-none');
+      
+      // Simular progresso (0% -> 30% durante preparação)
+      let progress = 0;
+      progressBar.style.width = '0%';
+      progressText.textContent = '0%';
+      
+      const progressInterval = setInterval(() => {
+        if (progress < 30) {
+          progress += 5;
+          progressBar.style.width = progress + '%';
+          progressText.textContent = progress + '%';
+        }
+      }, 100);
 
       // obter aditivo selecionado
       const aditivoSelecionado = parseInt(document.getElementById('aditivoSelect').value) || 0;
 
-      // enviar para /api/despesa
-      fetch('/api/despesa', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({numero_termo: numeroTermo, despesas, month_names: monthNames, aditivo: aditivoSelecionado})
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.warning){
-          if (confirm(data.message + '\nDeseja prosseguir e salvar mesmo assim?')){
-            // forçar com confirmar
-            fetch('/api/despesa/confirmar',{
-              method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({numero_termo: numeroTermo, despesas, month_names: monthNames, aditivo: aditivoSelecionado})
-            }).then(r=>r.json()).then(d=>{
-              if (d.message) alert(d.message);
-              else if (d.error) alert('Erro: ' + d.error);
-              location.href = '/orcamento';
-            }).catch(e=>{ alert('Erro ao confirmar. Veja console.'); console.error(e); });
+      console.log('[SALVAR] Enviando requisição para /api/despesa...');
+      
+      // 30% -> 70% durante envio
+      setTimeout(() => {
+        clearInterval(progressInterval);
+        progress = 30;
+        const uploadInterval = setInterval(() => {
+          if (progress < 70) {
+            progress += 2;
+            progressBar.style.width = progress + '%';
+            progressText.textContent = progress + '%';
           }
-        } else {
-          if (data.message) alert(data.message);
-          else if (data.error) alert('Erro: ' + data.error);
-          location.href = '/orcamento';
-        }
-      }).catch(e=>{ alert('Erro ao salvar. Veja console.'); console.error(e); });
+        }, 50);
+        
+        // enviar para /api/despesa
+        fetch('/api/despesa', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({numero_termo: numeroTermo, despesas, month_names: monthNames, aditivo: aditivoSelecionado})
+        })
+        .then(r => {
+          clearInterval(uploadInterval);
+          progress = 70;
+          progressBar.style.width = '70%';
+          progressText.textContent = '70%';
+          return r.json();
+        })
+        .then(data => {
+          console.log('[SALVAR] Resposta recebida:', data);
+          
+          // 70% -> 90%
+          progress = 90;
+          progressBar.style.width = '90%';
+          progressText.textContent = '90%';
+          
+          if (data.warning){
+            // Resetar UI
+            btn.disabled = false;
+            btnIcon.classList.remove('d-none');
+            btnText.textContent = 'Salvar';
+            btnSpinner.classList.add('d-none');
+            progressContainer.classList.add('d-none');
+            
+            if (confirm(data.message + '\nDeseja prosseguir e salvar mesmo assim?')){
+              // Re-iniciar progresso para confirmação
+              btn.disabled = true;
+              btnIcon.classList.add('d-none');
+              btnText.textContent = 'Confirmando...';
+              btnSpinner.classList.remove('d-none');
+              progressContainer.classList.remove('d-none');
+              progressBar.style.width = '50%';
+              progressText.textContent = '50%';
+              
+              // forçar com confirmar
+              fetch('/api/despesa/confirmar',{
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({numero_termo: numeroTermo, despesas, month_names: monthNames, aditivo: aditivoSelecionado})
+              }).then(r => {
+                progressBar.style.width = '90%';
+                progressText.textContent = '90%';
+                return r.json();
+              }).then(d=>{
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+                progressBar.classList.remove('progress-bar-animated');
+                
+                if (d.message) alert(d.message);
+                else if (d.error) alert('Erro: ' + d.error);
+                
+                setTimeout(() => {
+                  location.href = '/orcamento';
+                }, 500);
+              }).catch(e=>{ 
+                btn.disabled = false;
+                btnIcon.classList.remove('d-none');
+                btnText.textContent = 'Salvar';
+                btnSpinner.classList.add('d-none');
+                progressContainer.classList.add('d-none');
+                alert('Erro ao confirmar. Veja console.'); 
+                console.error(e); 
+              });
+            }
+          } else {
+            // 90% -> 100%
+            progressBar.style.width = '100%';
+            progressText.textContent = '100%';
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.add('bg-success');
+            
+            if (data.message) alert(data.message);
+            else if (data.error) {
+              alert('Erro: ' + data.error);
+              // Resetar em caso de erro
+              btn.disabled = false;
+              btnIcon.classList.remove('d-none');
+              btnText.textContent = 'Salvar';
+              btnSpinner.classList.add('d-none');
+              progressContainer.classList.add('d-none');
+              return;
+            }
+            
+            console.log('[SALVAR] Redirecionando para /orcamento...');
+            setTimeout(() => {
+              location.href = '/orcamento';
+            }, 500);
+          }
+        }).catch(e=>{ 
+          clearInterval(uploadInterval);
+          btn.disabled = false;
+          btnIcon.classList.remove('d-none');
+          btnText.textContent = 'Salvar';
+          btnSpinner.classList.add('d-none');
+          progressContainer.classList.add('d-none');
+          progressBar.classList.remove('progress-bar-animated');
+          progressBar.classList.add('bg-danger');
+          alert('Erro ao salvar. Veja console.'); 
+          console.error(e); 
+        });
+      }, 300);
     });
 
     // recalcular totais por coluna, total geral E total por linha

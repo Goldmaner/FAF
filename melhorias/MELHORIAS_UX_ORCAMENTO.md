@@ -8,10 +8,18 @@
 **Objetivo:** Mostrar o total de cada rubrica/categoria somando todos os meses
 
 **Implementação:**
-- Adicionada coluna `<th class="col-total-linha">Total</th>` no cabeçalho
+- Adicionada coluna `<th class="col-total-linha">Total</th>` no cabeçalho (ANTES da coluna "Ação")
 - Adicionada célula `<td class="col-total-linha text-end total-linha">0,00</td>` em cada linha do tbody
 - Modificada função `recalcTotals()` para calcular e exibir o total por linha
 - Estilo com `background-color: #f8f9fa` e `font-weight: bold` para destacar
+
+**Bug Corrigido (20/10/2025):**
+- Problema: Coluna Total aparecia cortada após o 3º mês em termos com muitos meses
+- Causa: Funções `addLinha` e `addMonthsBtn` não inseriam/posicionavam a coluna Total corretamente
+- Solução:
+  * `addLinha`: Agora inclui `<td class="col-total-linha text-end total-linha">0,00</td>` antes do botão Remover
+  * `addMonthsBtn`: Insere novos meses ANTES da penúltima coluna (Total), usando `thead.children[thead.children.length - 2]`
+  * Garantido que Total sempre fica na penúltima posição, independente do número de meses
 
 ### ✅ 2. Botão Ocultar/Mostrar Meses
 **Objetivo:** Permitir visualizar apenas rubricas, categorias e totais, ocultando colunas de meses

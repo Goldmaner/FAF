@@ -1,11 +1,12 @@
 """
 Blueprint de despesas e APIs relacionadas a orçamento
+Inclui auditoria automática via triggers para parcerias_despesas
 """
 
 from flask import Blueprint, request, jsonify, session
 from datetime import datetime
 import psycopg2
-from db import get_db, get_cursor, execute_dual, get_cursor_local, get_cursor_railway
+from db import get_db, get_cursor, execute_dual, get_cursor_local, get_cursor_railway, set_audit_user, get_current_user_id
 from utils import login_required
 
 despesas_bp = Blueprint('despesas', __name__, url_prefix='/api')
@@ -160,6 +161,10 @@ def criar_despesa():
 
         # Se chegou aqui, os totais batem dentro da tolerância: substituir (deletar+inserir)
         try:
+            # Configurar usuário para auditoria
+            usuario_id = get_current_user_id()
+            set_audit_user(usuario_id)
+            
             # Deletar despesas antigas do aditivo em ambos os bancos
             delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"
             execute_dual(delete_query, (numero_termo, aditivo))
@@ -260,6 +265,10 @@ def confirmar_despesa():
             return {"error": "numero_termo e despesas são obrigatórios"}, 400
 
         registros_inseridos = 0
+
+        # Configurar usuário para auditoria
+        usuario_id = get_current_user_id()
+        set_audit_user(usuario_id)
 
         # Antes de inserir, deletar registros existentes do mesmo aditivo para substituir
         delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"
