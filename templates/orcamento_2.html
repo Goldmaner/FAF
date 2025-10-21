@@ -579,13 +579,22 @@
                 progressBar.style.width = '100%';
                 progressText.textContent = '100%';
                 progressBar.classList.remove('progress-bar-animated');
+                progressBar.classList.add('bg-success');
                 
                 if (d.message) alert(d.message);
                 else if (d.error) alert('Erro: ' + d.error);
                 
+                // Resetar botão após 1 segundo
                 setTimeout(() => {
-                  location.href = '/orcamento';
-                }, 500);
+                  btn.disabled = false;
+                  btnIcon.classList.remove('d-none');
+                  btnText.textContent = 'Salvar';
+                  btnSpinner.classList.add('d-none');
+                  progressContainer.classList.add('d-none');
+                  progressBar.style.width = '0%';
+                  progressBar.classList.remove('bg-success', 'bg-warning', 'bg-danger');
+                  progressBar.classList.add('progress-bar-animated');
+                }, 1000);
               }).catch(e=>{ 
                 btn.disabled = false;
                 btnIcon.classList.remove('d-none');
@@ -647,10 +656,19 @@
             
             if (alertMessage) alert(alertMessage);
             
-            console.log('[SALVAR] Redirecionando para /orcamento...');
+            console.log('[SALVAR] Salvamento concluído! Permanecendo na página.');
+            
+            // Resetar botão após 1 segundo
             setTimeout(() => {
-              location.href = '/orcamento';
-            }, 500);
+              btn.disabled = false;
+              btnIcon.classList.remove('d-none');
+              btnText.textContent = 'Salvar';
+              btnSpinner.classList.add('d-none');
+              progressContainer.classList.add('d-none');
+              progressBar.style.width = '0%';
+              progressBar.classList.remove('bg-success', 'bg-warning', 'bg-danger');
+              progressBar.classList.add('progress-bar-animated');
+            }, 1000);
           }
         }).catch(e=>{ 
           clearInterval(uploadInterval);
