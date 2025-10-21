@@ -601,11 +601,41 @@
             progressBar.style.width = '100%';
             progressText.textContent = '100%';
             progressBar.classList.remove('progress-bar-animated');
-            progressBar.classList.add('bg-success');
             
-            if (data.message) alert(data.message);
-            else if (data.error) {
-              alert('Erro: ' + data.error);
+            // Mostrar resultado detalhado dos bancos
+            let alertMessage = '';
+            if (data.message) {
+              alertMessage = data.message;
+              
+              // Adicionar detalhes dos bancos se disponível
+              if (data.databases) {
+                const dbInfo = [];
+                if (data.databases.local) dbInfo.push('✅ LOCAL');
+                else dbInfo.push('❌ LOCAL');
+                
+                if (data.databases.railway) dbInfo.push('✅ RAILWAY');
+                else dbInfo.push('❌ RAILWAY');
+                
+                alertMessage += '\n\nStatus dos bancos:\n' + dbInfo.join('\n');
+                
+                // Adicionar contadores se disponível
+                if (data.databases.local_count !== undefined) {
+                  alertMessage += `\n\nRegistros salvos:\nLOCAL: ${data.databases.local_count}/${data.registros}\nRAILWAY: ${data.databases.railway_count}/${data.registros}`;
+                }
+              }
+              
+              // Se salvou em pelo menos um banco, marcar como sucesso
+              if (data.databases && (data.databases.local || data.databases.railway)) {
+                progressBar.classList.add('bg-success');
+              } else {
+                progressBar.classList.add('bg-warning');
+              }
+            }
+            
+            if (data.error) {
+              alertMessage = 'Erro: ' + data.error;
+              progressBar.classList.add('bg-danger');
+              alert(alertMessage);
               // Resetar em caso de erro
               btn.disabled = false;
               btnIcon.classList.remove('d-none');
@@ -614,6 +644,8 @@
               progressContainer.classList.add('d-none');
               return;
             }
+            
+            if (alertMessage) alert(alertMessage);
             
             console.log('[SALVAR] Redirecionando para /orcamento...');
             setTimeout(() => {

@@ -1,6 +1,7 @@
 """
 Script para configurar triggers de auditoria na tabela parcerias_despesas
 Executa uma única vez para criar as funções e triggers no PostgreSQL
+CORRIGIDO: Removido erro de sintaxe SQL (vírgula extra)
 """
 
 import sys

@@ -32,10 +32,14 @@ def get_db_railway():
     """
     if "db_railway" not in g:
         try:
+            print(f"[DEBUG] Tentando conectar ao banco RAILWAY...")
             g.db_railway = psycopg2.connect(**DB_CONFIG_RAILWAY)
             g.db_railway.autocommit = False  # Para controlar transações manualmente
+            print(f"[DEBUG] Conexão RAILWAY estabelecida com sucesso")
         except Exception as e:
             print(f"[AVISO] Falha ao conectar no banco RAILWAY: {e}")
+            import traceback
+            traceback.print_exc()
             g.db_railway = None
     return g.db_railway
 
@@ -85,47 +89,70 @@ def get_cursor():
 def execute_dual(query, params=None):
     """
     Executa uma operação de escrita (INSERT/UPDATE/DELETE) nos dois bancos de dados.
-    Retorna True se pelo menos um banco foi atualizado com sucesso.
+    Retorna um dicionário com status de cada banco.
     
     Args:
         query: String SQL a ser executada
         params: Parâmetros para a query (tuple ou dict)
     
     Returns:
-        bool: True se sucesso em pelo menos um banco
+        dict: {'success': bool, 'local': bool, 'railway': bool, 'errors': dict}
     """
     success_local = False
     success_railway = False
+    errors = {}
     
     # Executar no banco LOCAL
-    cur_local = get_cursor_local()
-    if cur_local:
-        try:
+    try:
+        cur_local = get_cursor_local()
+        if cur_local:
             cur_local.execute(query, params)
             get_db_local().commit()
             success_local = True
-        except Exception as e:
-            print(f"[ERRO] Falha ao executar no banco LOCAL: {e}")
-            try:
-                get_db_local().rollback()
-            except:
-                pass
+            print(f"[DEBUG] Query executada com sucesso no banco LOCAL")
+        else:
+            errors['local'] = "Cursor LOCAL não disponível"
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[ERRO] Falha ao executar no banco LOCAL: {error_msg}")
+        errors['local'] = error_msg
+        try:
+            db_local = get_db_local()
+            if db_local:
+                db_local.rollback()
+        except:
+            pass
     
     # Executar no banco RAILWAY
-    cur_railway = get_cursor_railway()
-    if cur_railway:
-        try:
+    try:
+        cur_railway = get_cursor_railway()
+        if cur_railway:
             cur_railway.execute(query, params)
             get_db_railway().commit()
             success_railway = True
-        except Exception as e:
-            print(f"[ERRO] Falha ao executar no banco RAILWAY: {e}")
-            try:
-                get_db_railway().rollback()
-            except:
-                pass
+            print(f"[DEBUG] Query executada com sucesso no banco RAILWAY")
+        else:
+            errors['railway'] = "Cursor RAILWAY não disponível"
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[ERRO] Falha ao executar no banco RAILWAY: {error_msg}")
+        errors['railway'] = error_msg
+        try:
+            db_railway = get_db_railway()
+            if db_railway:
+                db_railway.rollback()
+        except:
+            pass
     
-    return success_local or success_railway
+    # Retornar resultado detalhado
+    result = {
+        'success': success_local or success_railway,
+        'local': success_local,
+        'railway': success_railway,
+        'errors': errors
+    }
+    
+    return result
 
 
 def set_audit_user(usuario_id):
@@ -139,7 +166,8 @@ def set_audit_user(usuario_id):
     if usuario_id is None:
         usuario_id = 1  # ID padrão do sistema
     
-    set_sql = f"SET LOCAL app.current_user_id = '{usuario_id}'"
+    # Usar SET em vez de SET LOCAL (não precisa de transação ativa)
+    set_sql = f"SET app.current_user_id = '{usuario_id}'"
     
     # Configurar no banco LOCAL
     cur_local = get_cursor_local()
@@ -148,6 +176,7 @@ def set_audit_user(usuario_id):
             cur_local.execute(set_sql)
         except Exception as e:
             print(f"[AVISO] Falha ao configurar audit user no LOCAL: {e}")
+            # Não é crítico, continuar mesmo se falhar
     
     # Configurar no banco RAILWAY
     cur_railway = get_cursor_railway()
@@ -156,6 +185,7 @@ def set_audit_user(usuario_id):
             cur_railway.execute(set_sql)
         except Exception as e:
             print(f"[AVISO] Falha ao configurar audit user no RAILWAY: {e}")
+            # Não é crítico, continuar mesmo se falhar
 
 
 def get_current_user_id():

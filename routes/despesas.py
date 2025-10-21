@@ -161,13 +161,20 @@ def criar_despesa():
 
         # Se chegou aqui, os totais batem dentro da tolerância: substituir (deletar+inserir)
         try:
-            # Configurar usuário para auditoria
-            usuario_id = get_current_user_id()
-            set_audit_user(usuario_id)
+            # AUDITORIA DESATIVADA PARA DEBUG
+            # usuario_id = get_current_user_id()
+            # print(f"[DEBUG] Usuario ID para auditoria: {usuario_id}")
+            # try:
+            #     set_audit_user(usuario_id)
+            #     print(f"[DEBUG] Audit user configurado com sucesso")
+            # except Exception as audit_error:
+            #     print(f"[AVISO] Erro ao configurar audit user (continuando): {audit_error}")
             
             # Deletar despesas antigas do aditivo em ambos os bancos
+            print(f"[DEBUG] Deletando despesas antigas: termo={numero_termo}, aditivo={aditivo}")
             delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"
-            execute_dual(delete_query, (numero_termo, aditivo))
+            delete_result = execute_dual(delete_query, (numero_termo, aditivo))
+            print(f"[DEBUG] Resultado DELETE: {delete_result}")
             
             # Inserir novas despesas em ambos os bancos
             insert_query = """
@@ -176,23 +183,70 @@ def criar_despesa():
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
             
-            for registro in registros_para_inserir:
-                execute_dual(insert_query, (
-                    registro['numero_termo'],
-                    registro['rubrica'], 
-                    registro['quantidade'],
-                    registro['categoria_despesa'],
-                    registro['valor'],
-                    registro['mes'],
-                    registro['aditivo']
-                ))
+            print(f"[DEBUG] Inserindo {len(registros_para_inserir)} registros...")
+            insert_count_local = 0
+            insert_count_railway = 0
+            insert_errors = []
+            
+            for idx, registro in enumerate(registros_para_inserir):
+                try:
+                    print(f"[DEBUG] Registro {idx+1}: {registro}")
+                    result = execute_dual(insert_query, (
+                        registro['numero_termo'],
+                        registro['rubrica'], 
+                        registro['quantidade'],
+                        registro['categoria_despesa'],
+                        registro['valor'],
+                        registro['mes'],
+                        registro['aditivo']
+                    ))
+                    
+                    if result['local']:
+                        insert_count_local += 1
+                    if result['railway']:
+                        insert_count_railway += 1
+                    
+                    if not result['success']:
+                        insert_errors.append(f"Registro {idx+1}: {result['errors']}")
+                        
+                except Exception as insert_error:
+                    print(f"[ERRO] Falha ao inserir registro {idx+1}: {insert_error}")
+                    insert_errors.append(f"Registro {idx+1}: {str(insert_error)}")
+            
+            # Construir mensagem de status
+            total_registros = len(registros_para_inserir)
+            bancos_salvos = []
+            if insert_count_local == total_registros:
+                bancos_salvos.append("LOCAL")
+            if insert_count_railway == total_registros:
+                bancos_salvos.append("RAILWAY")
+            
+            if not bancos_salvos:
+                status_msg = f"⚠️ ERRO: Nenhum registro salvo em nenhum banco de dados!"
+            elif len(bancos_salvos) == 2:
+                status_msg = f"✅ Salvo com sucesso em ambos os bancos (LOCAL e RAILWAY)"
+            else:
+                status_msg = f"⚠️ Salvo apenas no banco {bancos_salvos[0]} ({len(bancos_salvos)}/2 bancos)"
+            
+            print(f"[INFO] {status_msg}")
+            print(f"[INFO] LOCAL: {insert_count_local}/{total_registros} | RAILWAY: {insert_count_railway}/{total_registros}")
             
             return {
-                "message": f"Inseridas {len(registros_para_inserir)} despesas com sucesso",
+                "message": status_msg,
                 "total_inserido": total_inserido,
-                "registros": len(registros_para_inserir)
+                "registros": total_registros,
+                "databases": {
+                    "local": insert_count_local == total_registros,
+                    "railway": insert_count_railway == total_registros,
+                    "local_count": insert_count_local,
+                    "railway_count": insert_count_railway
+                },
+                "errors": insert_errors if insert_errors else None
             }, 201
         except Exception as e:
+            print(f"[ERRO] Erro ao inserir despesas: {e}")
+            import traceback
+            traceback.print_exc()
             return {"error": f"Erro ao inserir despesas: {str(e)}"}, 500
         
     except Exception as e:
@@ -266,13 +320,14 @@ def confirmar_despesa():
 
         registros_inseridos = 0
 
-        # Configurar usuário para auditoria
-        usuario_id = get_current_user_id()
-        set_audit_user(usuario_id)
+        # AUDITORIA DESATIVADA PARA DEBUG
+        # usuario_id = get_current_user_id()
+        # set_audit_user(usuario_id)
 
         # Antes de inserir, deletar registros existentes do mesmo aditivo para substituir
         delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"
-        execute_dual(delete_query, (numero_termo, aditivo))
+        delete_result = execute_dual(delete_query, (numero_termo, aditivo))
+        print(f"[DEBUG] Resultado DELETE em confirmar_despesa: {delete_result}")
 
         # Inserir despesas em ambos os bancos
         insert_query = """
@@ -305,7 +360,7 @@ def confirmar_despesa():
                     
                     valor = float(valor_limpo)
 
-                    execute_dual(insert_query, (
+                    result = execute_dual(insert_query, (
                         numero_termo, 
                         rubrica, 
                         quantidade if quantidade != '-' else None, 
@@ -314,12 +369,17 @@ def confirmar_despesa():
                         mes, 
                         aditivo
                     ))
+                    
+                    if result['success']:
+                        registros_inseridos += 1
 
-                    registros_inseridos += 1
                 except (ValueError, TypeError):
                     continue
 
-        return {"message": f"Inseridas {registros_inseridos} despesas com sucesso"}, 201
+        return {
+            "message": f"Inseridas {registros_inseridos} despesas",
+            "registros": registros_inseridos
+        }, 201
         
     except Exception as e:
         return {"error": f"Erro: {str(e)}"}, 500

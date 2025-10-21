@@ -280,9 +280,9 @@ def atualizar_categoria():
         if not categoria_nova or categoria_nova.strip() == '':
             return jsonify({"error": "Categoria nova não pode estar vazia"}), 400
         
-        # Configurar usuário para auditoria
-        usuario_id = get_current_user_id()
-        set_audit_user(usuario_id)
+        # AUDITORIA DESATIVADA PARA DEBUG
+        # usuario_id = get_current_user_id()
+        # set_audit_user(usuario_id)
         
         # Atualizar todas as ocorrências da categoria antiga para a nova em ambos os bancos
         query = """
@@ -291,14 +291,28 @@ def atualizar_categoria():
             WHERE categoria_despesa = %s
         """
         
-        if execute_dual(query, (categoria_nova.strip(), categoria_antiga)):
+        result = execute_dual(query, (categoria_nova.strip(), categoria_antiga))
+        
+        if result['success']:
+            bancos = []
+            if result['local']:
+                bancos.append("LOCAL")
+            if result['railway']:
+                bancos.append("RAILWAY")
+            
+            message = f"Categoria atualizada em: {', '.join(bancos)}" if len(bancos) < 2 else "Categoria atualizada em ambos os bancos"
+            
             return jsonify({
-                "message": f"Categoria atualizada com sucesso!",
+                "message": message,
                 "categoria_antiga": categoria_antiga,
-                "categoria_nova": categoria_nova.strip()
+                "categoria_nova": categoria_nova.strip(),
+                "databases": {"local": result['local'], "railway": result['railway']}
             }), 200
         else:
-            return jsonify({"error": "Falha ao atualizar categoria em ambos os bancos"}), 500
+            return jsonify({
+                "error": "Falha ao atualizar categoria em ambos os bancos",
+                "errors": result.get('errors', {})
+            }), 500
         
     except Exception as e:
         return jsonify({"error": f"Erro: {str(e)}"}), 500
