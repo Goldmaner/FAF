@@ -1,15 +1,48 @@
 """
 Blueprint de despesas e APIs relacionadas a orçamento
-Inclui auditoria automática via triggers para parcerias_despesas
 """
 
 from flask import Blueprint, request, jsonify, session
 from datetime import datetime
 import psycopg2
-from db import get_db, get_cursor, execute_dual, get_cursor_local, get_cursor_railway, set_audit_user, get_current_user_id
+from db import get_db, get_cursor, execute_dual, get_cursor_local, get_cursor_railway
 from utils import login_required
 
 despesas_bp = Blueprint('despesas', __name__, url_prefix='/api')
+
+
+@despesas_bp.route('/test-save', methods=['GET'])
+def test_save():
+    """
+    Endpoint de teste para verificar se salvamento funciona
+    Acesse: http://127.0.0.1:8080/api/test-save
+    """
+    print("\n" + "="*80)
+    print("🧪 [TEST-SAVE] Endpoint de teste chamado!")
+    print("="*80)
+    
+    try:
+        result = execute_dual(
+            "SELECT 1 as test",
+            None
+        )
+        
+        return {
+            "message": "✅ Teste de salvamento funcionou!",
+            "execute_dual_result": result,
+            "databases": {
+                "local": result['local'],
+                "railway": result['railway']
+            }
+        }, 200
+    except Exception as e:
+        print(f"❌ [TEST-SAVE] Erro: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, 500
 
 
 @despesas_bp.route('/termo/<numero_termo>', methods=['GET'])
@@ -84,8 +117,23 @@ def criar_despesa():
     Endpoint para inserir múltiplas despesas de um termo.
     Espera JSON com: numero_termo, despesas (array com rubrica, quantidade, categoria_despesa, valores_por_mes), aditivo
     """
+    print("\n" + "="*80)
+    print("🚀 [CRIAR_DESPESA] Requisição POST recebida em /api/despesa")
+    print("="*80)
+    
     try:
+        print("📥 [CRIAR_DESPESA] Tentando fazer request.get_json()...")
         data = request.get_json()
+        
+        if data is None:
+            print("❌ [CRIAR_DESPESA] request.get_json() retornou None!")
+            return {"error": "Nenhum dado JSON recebido"}, 400
+            
+        print(f"📦 [CRIAR_DESPESA] JSON recebido com sucesso")
+        print(f"   - Termo: {data.get('numero_termo')}")
+        print(f"   - Aditivo: {data.get('aditivo')}")
+        print(f"   - Total de despesas: {len(data.get('despesas', []))}")
+        
         numero_termo = data.get('numero_termo')
         despesas = data.get('despesas', [])
         aditivo = data.get('aditivo', 0)  # Padrão: 0 (Base)
@@ -161,15 +209,6 @@ def criar_despesa():
 
         # Se chegou aqui, os totais batem dentro da tolerância: substituir (deletar+inserir)
         try:
-            # AUDITORIA DESATIVADA PARA DEBUG
-            # usuario_id = get_current_user_id()
-            # print(f"[DEBUG] Usuario ID para auditoria: {usuario_id}")
-            # try:
-            #     set_audit_user(usuario_id)
-            #     print(f"[DEBUG] Audit user configurado com sucesso")
-            # except Exception as audit_error:
-            #     print(f"[AVISO] Erro ao configurar audit user (continuando): {audit_error}")
-            
             # Deletar despesas antigas do aditivo em ambos os bancos
             print(f"[DEBUG] Deletando despesas antigas: termo={numero_termo}, aditivo={aditivo}")
             delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"
@@ -250,7 +289,13 @@ def criar_despesa():
             return {"error": f"Erro ao inserir despesas: {str(e)}"}, 500
         
     except Exception as e:
-        return {"error": f"Erro inesperado: {str(e)}"}, 500
+        print(f"\n❌❌❌ [CRIAR_DESPESA] EXCEÇÃO GLOBAL CAPTURADA:")
+        print(f"Tipo: {type(e).__name__}")
+        print(f"Mensagem: {str(e)}")
+        import traceback
+        print("Traceback completo:")
+        traceback.print_exc()
+        return jsonify({"error": f"Erro inesperado: {str(e)}", "type": type(e).__name__}), 500
 
 
 @despesas_bp.route('/despesas/<path:numero_termo>', methods=['GET'])
@@ -319,10 +364,6 @@ def confirmar_despesa():
             return {"error": "numero_termo e despesas são obrigatórios"}, 400
 
         registros_inseridos = 0
-
-        # AUDITORIA DESATIVADA PARA DEBUG
-        # usuario_id = get_current_user_id()
-        # set_audit_user(usuario_id)
 
         # Antes de inserir, deletar registros existentes do mesmo aditivo para substituir
         delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"

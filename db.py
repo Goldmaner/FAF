@@ -155,47 +155,6 @@ def execute_dual(query, params=None):
     return result
 
 
-def set_audit_user(usuario_id):
-    """
-    Configura o usuario_id na sessão do PostgreSQL para auditoria automática.
-    Deve ser chamado antes de operações que modificam parcerias_despesas.
-    
-    Args:
-        usuario_id: ID do usuário logado (ou None para usar ID 1 = sistema)
-    """
-    if usuario_id is None:
-        usuario_id = 1  # ID padrão do sistema
-    
-    # Usar SET em vez de SET LOCAL (não precisa de transação ativa)
-    set_sql = f"SET app.current_user_id = '{usuario_id}'"
-    
-    # Configurar no banco LOCAL
-    cur_local = get_cursor_local()
-    if cur_local:
-        try:
-            cur_local.execute(set_sql)
-        except Exception as e:
-            print(f"[AVISO] Falha ao configurar audit user no LOCAL: {e}")
-            # Não é crítico, continuar mesmo se falhar
-    
-    # Configurar no banco RAILWAY
-    cur_railway = get_cursor_railway()
-    if cur_railway:
-        try:
-            cur_railway.execute(set_sql)
-        except Exception as e:
-            print(f"[AVISO] Falha ao configurar audit user no RAILWAY: {e}")
-            # Não é crítico, continuar mesmo se falhar
-
-
-def get_current_user_id():
-    """
-    Obtém o ID do usuário logado da sessão Flask.
-    Retorna None se não houver usuário logado.
-    """
-    return session.get('usuario_id')
-
-
 def close_db(e=None):
     """
     Fecha as conexões com os bancos de dados ao final do contexto da aplicação.

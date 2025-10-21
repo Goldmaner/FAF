@@ -72,6 +72,5 @@ import os
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    # Desabilitar auto-reload em produção ou quando FLASK_NO_RELOAD=1
-    use_reloader = os.environ.get('FLASK_NO_RELOAD', '0') != '1'
-    app.run(debug=True, host='0.0.0.0', port=port, use_reloader=use_reloader)
+    # DESABILITAR AUTO-RELOAD PARA DEBUG
+    app.run(debug=True, host='0.0.0.0', port=port, use_reloader=False)

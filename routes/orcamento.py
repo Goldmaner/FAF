@@ -1,10 +1,9 @@
 """
 Blueprint de orçamento (listagem e edição)
-Inclui auditoria automática via triggers para parcerias_despesas
 """
 
 from flask import Blueprint, render_template, request, Response, jsonify
-from db import get_cursor, set_audit_user, get_current_user_id
+from db import get_cursor, execute_dual
 from utils import login_required
 import csv
 from io import StringIO
@@ -279,10 +278,6 @@ def atualizar_categoria():
         
         if not categoria_nova or categoria_nova.strip() == '':
             return jsonify({"error": "Categoria nova não pode estar vazia"}), 400
-        
-        # AUDITORIA DESATIVADA PARA DEBUG
-        # usuario_id = get_current_user_id()
-        # set_audit_user(usuario_id)
         
         # Atualizar todas as ocorrências da categoria antiga para a nova em ambos os bancos
         query = """
