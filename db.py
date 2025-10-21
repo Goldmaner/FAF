@@ -155,6 +155,93 @@ def execute_dual(query, params=None):
     return result
 
 
+def execute_dual_with_audit(query, params=None, usuario_id=None):
+    """
+    Executa operação com auditoria usando SET LOCAL em transação.
+    
+    Args:
+        query: String SQL a ser executada
+        params: Parâmetros para a query
+        usuario_id: ID do usuário para auditoria (obrigatório)
+    
+    Returns:
+        dict: {'success': bool, 'local': bool, 'railway': bool, 'errors': dict}
+    """
+    if usuario_id is None:
+        usuario_id = session.get('usuario_id', 1)  # Default: 1 (sistema)
+    
+    success_local = False
+    success_railway = False
+    errors = {}
+    
+    # Executar no banco LOCAL com transação
+    try:
+        db_local = get_db_local()
+        if db_local:
+            cur_local = db_local.cursor()
+            
+            # Iniciar transação e definir usuário
+            cur_local.execute("BEGIN")
+            cur_local.execute(f"SET LOCAL app.current_user_id = '{usuario_id}'")
+            
+            # Executar a query
+            cur_local.execute(query, params)
+            
+            # Commit
+            db_local.commit()
+            success_local = True
+            print(f"[DEBUG] Query com auditoria executada no LOCAL (user_id={usuario_id})")
+        else:
+            errors['local'] = "Conexão LOCAL não disponível"
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[ERRO] Falha no LOCAL: {error_msg}")
+        errors['local'] = error_msg
+        try:
+            db_local = get_db_local()
+            if db_local:
+                db_local.rollback()
+        except:
+            pass
+    
+    # Executar no banco RAILWAY com transação
+    try:
+        db_railway = get_db_railway()
+        if db_railway:
+            cur_railway = db_railway.cursor()
+            
+            # Iniciar transação e definir usuário
+            cur_railway.execute("BEGIN")
+            cur_railway.execute(f"SET LOCAL app.current_user_id = '{usuario_id}'")
+            
+            # Executar a query
+            cur_railway.execute(query, params)
+            
+            # Commit
+            db_railway.commit()
+            success_railway = True
+            print(f"[DEBUG] Query com auditoria executada no RAILWAY (user_id={usuario_id})")
+        else:
+            errors['railway'] = "Conexão RAILWAY não disponível"
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[ERRO] Falha no RAILWAY: {error_msg}")
+        errors['railway'] = error_msg
+        try:
+            db_railway = get_db_railway()
+            if db_railway:
+                db_railway.rollback()
+        except:
+            pass
+    
+    return {
+        'success': success_local or success_railway,
+        'local': success_local,
+        'railway': success_railway,
+        'errors': errors
+    }
+
+
 def close_db(e=None):
     """
     Fecha as conexões com os bancos de dados ao final do contexto da aplicação.

@@ -2,8 +2,8 @@
 Blueprint de orçamento (listagem e edição)
 """
 
-from flask import Blueprint, render_template, request, Response, jsonify
-from db import get_cursor, execute_dual
+from flask import Blueprint, render_template, request, Response, jsonify, session
+from db import get_cursor, execute_dual, execute_dual_with_audit
 from utils import login_required
 import csv
 from io import StringIO
@@ -279,14 +279,17 @@ def atualizar_categoria():
         if not categoria_nova or categoria_nova.strip() == '':
             return jsonify({"error": "Categoria nova não pode estar vazia"}), 400
         
-        # Atualizar todas as ocorrências da categoria antiga para a nova em ambos os bancos
+        # Obter ID do usuário para auditoria
+        usuario_id = session.get('usuario_id', 1)
+        
+        # Atualizar todas as ocorrências da categoria antiga para a nova em ambos os bancos COM AUDITORIA
         query = """
             UPDATE Parcerias_Despesas
             SET categoria_despesa = %s
             WHERE categoria_despesa = %s
         """
         
-        result = execute_dual(query, (categoria_nova.strip(), categoria_antiga))
+        result = execute_dual_with_audit(query, (categoria_nova.strip(), categoria_antiga), usuario_id)
         
         if result['success']:
             bancos = []

@@ -5,7 +5,7 @@ Blueprint de despesas e APIs relacionadas a orçamento
 from flask import Blueprint, request, jsonify, session
 from datetime import datetime
 import psycopg2
-from db import get_db, get_cursor, execute_dual, get_cursor_local, get_cursor_railway
+from db import get_db, get_cursor, execute_dual, execute_dual_with_audit, get_cursor_local, get_cursor_railway
 from utils import login_required
 
 despesas_bp = Blueprint('despesas', __name__, url_prefix='/api')
@@ -209,10 +209,14 @@ def criar_despesa():
 
         # Se chegou aqui, os totais batem dentro da tolerância: substituir (deletar+inserir)
         try:
-            # Deletar despesas antigas do aditivo em ambos os bancos
+            # Obter ID do usuário logado
+            usuario_id = session.get('usuario_id', 1)
+            print(f"[DEBUG] Usuario ID para auditoria: {usuario_id}")
+            
+            # Deletar despesas antigas do aditivo em ambos os bancos COM AUDITORIA
             print(f"[DEBUG] Deletando despesas antigas: termo={numero_termo}, aditivo={aditivo}")
             delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"
-            delete_result = execute_dual(delete_query, (numero_termo, aditivo))
+            delete_result = execute_dual_with_audit(delete_query, (numero_termo, aditivo), usuario_id)
             print(f"[DEBUG] Resultado DELETE: {delete_result}")
             
             # Inserir novas despesas em ambos os bancos
@@ -230,7 +234,7 @@ def criar_despesa():
             for idx, registro in enumerate(registros_para_inserir):
                 try:
                     print(f"[DEBUG] Registro {idx+1}: {registro}")
-                    result = execute_dual(insert_query, (
+                    result = execute_dual_with_audit(insert_query, (
                         registro['numero_termo'],
                         registro['rubrica'], 
                         registro['quantidade'],
@@ -238,7 +242,7 @@ def criar_despesa():
                         registro['valor'],
                         registro['mes'],
                         registro['aditivo']
-                    ))
+                    ), usuario_id)
                     
                     if result['local']:
                         insert_count_local += 1
@@ -364,10 +368,13 @@ def confirmar_despesa():
             return {"error": "numero_termo e despesas são obrigatórios"}, 400
 
         registros_inseridos = 0
+        
+        # Obter ID do usuário para auditoria
+        usuario_id = session.get('usuario_id', 1)
 
-        # Antes de inserir, deletar registros existentes do mesmo aditivo para substituir
+        # Antes de inserir, deletar registros existentes do mesmo aditivo para substituir COM AUDITORIA
         delete_query = "DELETE FROM Parcerias_Despesas WHERE numero_termo = %s AND COALESCE(aditivo, 0) = %s"
-        delete_result = execute_dual(delete_query, (numero_termo, aditivo))
+        delete_result = execute_dual_with_audit(delete_query, (numero_termo, aditivo), usuario_id)
         print(f"[DEBUG] Resultado DELETE em confirmar_despesa: {delete_result}")
 
         # Inserir despesas em ambos os bancos
@@ -401,7 +408,7 @@ def confirmar_despesa():
                     
                     valor = float(valor_limpo)
 
-                    result = execute_dual(insert_query, (
+                    result = execute_dual_with_audit(insert_query, (
                         numero_termo, 
                         rubrica, 
                         quantidade if quantidade != '-' else None, 
@@ -409,7 +416,7 @@ def confirmar_despesa():
                         valor, 
                         mes, 
                         aditivo
-                    ))
+                    ), usuario_id)
                     
                     if result['success']:
                         registros_inseridos += 1
